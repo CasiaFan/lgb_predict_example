@@ -1,0 +1,5 @@
+data
+*.model
+kernel.ipynb
+*.csv
+*.txt
