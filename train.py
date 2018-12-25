@@ -1,8 +1,9 @@
 import xgboost
 import lightgbm as lgb
-import os
+import os, pickle
 import pandas as pd
 import numpy as np
+from itertools import permutations
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import roc_auc_score
@@ -36,6 +37,9 @@ def prepare_train_input(input_file, col_name_used):
     seed = 7
     test_size = 0.25
     x_train, x_test, y_train, y_test = train_test_split(encoded_data, label, test_size=test_size, random_state=seed)
+    # save encoder
+    with open("encoder.bin", "wb") as f:
+        pickle.dump(encoders_dict, f)
     return (x_train, x_test, y_train, y_test)
 
 
@@ -64,7 +68,7 @@ def xgb_train(x_train, y_train, x_test, y_test, model_name):
 
 def lgb_train(x_train, y_train, x_test, y_test, model_name):
     params = {"num_leaves": 51,
-              'num_trees': 150,
+              'num_trees': 300,
               'objective': 'binary',
               'metric': 'auc',
               'max_bin': 20,
@@ -72,11 +76,11 @@ def lgb_train(x_train, y_train, x_test, y_test, model_name):
               # 'bagging_freq': 5,
               # 'feature_fraction': 0.9,
               'learning_rate': 0.05,
-              'num_iterations': 250,
-              'max_depth': 5,
-              'min_child_weight': 10,
-              'colsample_bytree': 0.3,
-              'subsample': 0.7,
+              'num_iterations': 300,
+              'max_depth': 15,
+              'min_child_weight': 20,
+              'colsample_bytree': 0.4,
+              'subsample': 0.6,
               'boosting_type': 'dart',
               'scale_pos_weight': 40,
               'boost_from_average': True}
@@ -130,15 +134,30 @@ def run(col_name_used, args):
         lgb_eval(x_test, y_test, model_name)
 
 
-COL_NAMES = ["week", "call_time", "list_type", "re_call_date", "address",
-             "kabushiki_code", "establishment", "kojokazu", "shihonkin", "employee_num",
-             "tokikessan_riekikin", "tokikessan_uriagedaka",
-             "tokirieki_shinchoritsu", "race_area", "charger_id"]
+COL_NAMES = ["charger_id", "week", "call_time", "list_type", "re_call_date",  "address", "kojokazu", "jigyoshokazu",
+             "tokikessan_uriagedaka",
+             "tosankeireki",  "jukyo", "race_area", "saishugakureki_gakko"]
+
 
 if __name__ == "__main__":
+    from predict import train_main
+    from eval import eval
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_file", default="train_call_history.csv", help="train input file name")
     parser.add_argument("--model_name", default="classifier.model", help="xgboost classifier save name")
     parser.add_argument("--model_type", default="lgb", help="Select classifier: lgb(lightgbm) or xgb(xgboost)", choices=["lgb", "xgb"])
     args = parser.parse_args()
+    perm = permutations(COL_NAMES[-4:])
+    best_i = 0
+    highest_score = 0
+    # for i, x in enumerate(perm):
+    #     run(COL_NAMES[:-4]+list(x), args)
+    #     train_main()
+    #     score = eval()
+    #     if score > highest_score:
+    #         best_i = i
+    #         highest_score = score
+    # print("best score: ", highest_score)
+    # print("col order: ", perm[best_i])
     run(COL_NAMES, args)
+

@@ -50,7 +50,7 @@ def analyze_week(df):
 # plt.show()
 
 # # service X no need
-# service = df["service"]
+# service = df_train["service"]
 # service_dict = dict(collections.Counter(service))
 # print(service_dict)
 
@@ -65,7 +65,8 @@ def analyze_kabushiki(df):
     # kabushiki_code
     kab = df["kabushiki_code"].fillna("0")
     kab_count = len(kab[kab != "0"])
-    print(kab_count)
+    print("{}/{}".format(kab_count, len(kab)))
+    print(np.sum(df["result"][kab != "0"]))
 
 def analyze_shihonkin(df):
     # shihonkin
@@ -76,6 +77,9 @@ def analyze_shihonkin(df):
     sk_groups = sk.groupby(pd.cut(sk, sk_bins))
     print(sk_groups.count())
 
+def analyze_charger_id(df):
+    ch = list(df["charger_id"])
+    print(len(set(ch)), len(ch))
 #
 # # employee num
 # emp_num = df["employee_num"].fillna("0").astype(int)
@@ -86,10 +90,29 @@ def analyze_shihonkin(df):
 # emp_groups = emp_num.groupby(pd.cut(emp_num, emp_bins))
 # print(emp_groups.count())
 #
-# # kojokazu 0/1
-# kojo_num = df["kojokazu"].fillna("0").astype(int)
-# # print(np.quantile(kojo_num, np.arange(0., 1., 0.1)))
-#
+# kojokazu 0/1
+def analyze_kojo(df):
+    kojo_num = np.array(df["kojokazu"].fillna("0").astype(int))
+    print(len(kojo_num[kojo_num == 0]), len(kojo_num))
+
+def analyze_position(df):
+    pos = np.array(df["position"])
+    print(set(pos))
+    print(dict(collections.Counter(pos)))
+    print(np.sum(df["result"][df["position"] == '代表取締役']))
+    print(np.sum(df["result"][df["position"].isna()]))
+    print(sum(df["result"]))
+    print(len(df["result"]))
+
+def analyze_jukyo(df):
+    jukyo = np.array(df["jukyo"])
+    print(dict(collections.Counter(jukyo)))
+
+def analyze_saishugakureki_gakko(df):
+    gakko = np.array(df["saishugakureki_gakko"].fillna("unknown"))
+    uni = [x for x in gakko if re.search(r".*大学.*", x)]
+    print(len(uni), len(gakko))
+
 # # jigyoshokazu 0/1/n
 # jiguo_num = df["jigyoshokazu"].fillna("0").astype(int)
 # print(np.quantile(jiguo_num, np.arange(0, 1, 0.1)))
@@ -210,17 +233,22 @@ def analyze_type(df):
     # plt.show()
     return list_dict
 
-charger_id = df_train["charger_id"]
-charger_dict = dict(collections.Counter(charger_id))
-sorted_charger = dict(sorted(charger_dict.items(), key=lambda x: x[1])[::-1])
-print(sorted_charger.items())
+def analyze_company_code(df):
+    code = list(df["company_code"])
+    print(len(set(code)), len(code))
 
-industry_code = df_train[["industry_code1", "industry_code2", "industry_code3"]]
-industry_code_dict = dict(collections.Counter(industry_code["industry_code1"].fillna(0)))
-industry_code_dict.update(dict(collections.Counter(industry_code["industry_code2"].fillna(0))))
-industry_code_dict.update(dict(collections.Counter(industry_code["industry_code3"].fillna(0))))
-sorted_industry_code = dict(sorted(industry_code_dict.items(), key=lambda x: x[1])[::-1])
-print(sorted_industry_code.items())
+analyze_saishugakureki_gakko(df_train)
+# charger_id = df_train["charger_id"]
+# charger_dict = dict(collections.Counter(charger_id))
+# sorted_charger = dict(sorted(charger_dict.items(), key=lambda x: x[1])[::-1])
+# print(sorted_charger.items())
+#
+# industry_code = df_train[["industry_code1", "industry_code2", "industry_code3"]]
+# industry_code_dict = dict(collections.Counter(industry_code["industry_code1"].fillna(0)))
+# industry_code_dict.update(dict(collections.Counter(industry_code["industry_code2"].fillna(0))))
+# industry_code_dict.update(dict(collections.Counter(industry_code["industry_code3"].fillna(0))))
+# sorted_industry_code = dict(sorted(industry_code_dict.items(), key=lambda x: x[1])[::-1])
+# print(sorted_industry_code.items())
 
 # label = df["result"].fillna(0)
 # print("{}/{}".format(sum(label), len(label)))

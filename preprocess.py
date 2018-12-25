@@ -173,7 +173,7 @@ class LikelihoodEncoder():
         return encoded_data
 
 
-def preprocess_numerical_value(data, valid_range=None, rep_na="ave", normalize=True, category_name=None, use_log=False):
+def preprocess_numerical_value(data, encoder=None, valid_range=None, rep_na="ave", normalize=True, category_name=None, use_log=False):
     """
     Preprocess numeric input data
     Args:
@@ -186,7 +186,8 @@ def preprocess_numerical_value(data, valid_range=None, rep_na="ave", normalize=T
     """
     if valid_range is None:
         valid_range = (0.05, 0.95)
-    encoder = NumericalEncoder(valid_range=valid_range, normalize=normalize)
+    if encoder is None:
+        encoder = NumericalEncoder(valid_range=valid_range, normalize=normalize)
     data_encoded = encoder.parse(data, rep_na=rep_na)
     if use_log and (not normalize):
         data_encoded = np.log(data_encoded + 1)  # +1 to avoid 0
@@ -195,14 +196,15 @@ def preprocess_numerical_value(data, valid_range=None, rep_na="ave", normalize=T
     return (data_encoded, encoder, category_name)
 
 
-def preprocess_categorical_value(data,
-                                 rep_na=None,
-                                 keep_name_list=None,
-                                 onehot_encode=True,
-                                 categories=None,
-                                 other_name_rep=None):
+def preprocess_categorical_value_onehot(data,
+                                        encoder=None,
+                                        rep_na=None,
+                                        keep_name_list=None,
+                                        onehot_encode=True,
+                                        categories=None,
+                                        other_name_rep=None):
     """
-    Preprocess categorical input value
+    Preprocess categorical input value into onehot encoding
     Args:
         data: input pandas Series data
         rep_na: values for replacing na. Default is 'unknown'.
@@ -217,13 +219,27 @@ def preprocess_categorical_value(data,
         rep_na = "unknown"
     if other_name_rep is None:
         other_name_rep = "others"
-    encoder = CategoricalEncoder(onehot_encode=onehot_encode, categories=categories)
+    if encoder is None:
+        encoder = CategoricalEncoder(onehot_encode=onehot_encode, categories=categories)
     # replace other labels with other
     if not keep_name_list is None:
         data[~ data.isna() & ~ data.isin(keep_name_list)] = other_name_rep
     valid_data = data.fillna(rep_na).astype(str)
     encoded_data = encoder.parse(valid_data)
+    if not onehot_encode:
+        encoded_data = np.expand_dims(encoded_data, 1)
     return (encoded_data, encoder, encoder.category_names)
+
+
+def preprocess_category_value_likelihood(data, encoder=None, category_name=None):
+    """
+    Preprocess data into likelihodd encoding
+    """
+    if encoder is None:
+        encoder = LikelihoodEncoder()
+    encoded_data = encoder.parse(data)
+    encoded_data = np.expand_dims(np.asarray(encoded_data), 1)
+    return (encoded_data, encoder, category_name)
 
 
 def parse_cate_exist(data):
@@ -268,20 +284,20 @@ def parse_num_exist(data):
         return ret
 
 
-def preprocess_cate_to_binary_encode(data):
+def preprocess_cate_to_binary_encode(data, encoder=None):
     """
     Parse data to 1 if item exists, otherwise 0
     """
     data = parse_cate_exist(data)
-    return preprocess_categorical_value(data)
+    return preprocess_categorical_value_onehot(data, encoder=encoder, onehot_encode=True)
 
 
-def preprocess_num_to_binary_encode(data):
+def preprocess_num_to_binary_encode(data, encoder=None):
     """
     Parse data to 1 if item exists and its value is larger than 0; if nan, use -1 to indicate
     """
     data = parse_num_exist(data)
-    return preprocess_categorical_value(data, rep_na=2)
+    return preprocess_categorical_value_onehot(data, rep_na=2, encoder=encoder)
 
 
 def preprocess_charger(data, main_charger_list=None):
@@ -300,7 +316,7 @@ def preprocess_charger(data, main_charger_list=None):
     return (encoded_data, encoder, total_charger_list)
 
 
-def preprocess_address(data, main_address_list=None):
+def preprocess_address(data, encoder=None, main_address_list=None):
     """
     Preprocess address
     Args:
@@ -314,19 +330,28 @@ def preprocess_address(data, main_address_list=None):
     if main_address_list is None:
         main_address_list = MAIN_ADDR_LIST
     data_cp = data.copy()
-    for i, address in enumerate(main_address_list):
-        data_cp[data_cp.str.contains(address, na=False)] = i + 2
-    data_cp[data_cp.str.match(".*[県府都道].*", na=False)] = 1
     data_cp = data_cp.fillna("unknown")
-    data_cp[data_cp == "unknown"] = 0
+    addrs = []
+    for x in data_cp:
+        if re.search(r"(.*[県府都]).*", x):
+            addrs.append(re.search(r"(.*?[県府都]).*", x).group(1))
+        else:
+            addrs.append(x)
+    addrs = pd.Series(addrs)
+    # for i, address in enumerate(main_address_list):
+    #     data_cp[data_cp.str.contains(address, na=False)] = i + 2
+    # data_cp[data_cp.str.match(".*[県府都道].*", na=False)] = 1
+    # data_cp = data_cp.fillna("unknown")
+    # data_cp[data_cp == "unknown"] = 0
     # print("Addr statistic", dict(collections.Counter(data)))
-    encoder = CategoricalEncoder()
-    encoded_data = encoder.parse(data_cp)
+    # encoder = CategoricalEncoder()
+    # encoded_data = encoder.parse(data_cp)
+    encoded_data, encoder, _ = preprocess_category_value_likelihood(addrs, encoder=encoder)
     total_address_list = ["unknown", "others"] + main_address_list
     return (encoded_data, encoder, total_address_list)
 
 
-def preprocess_calltime(data, triple_encode=False):
+def preprocess_calltime(data, encoder=None, triple_encode=False):
     """
     Preprocess call time
     Args:
@@ -352,18 +377,18 @@ def preprocess_calltime(data, triple_encode=False):
     calltime = [int(x[:2]) for x in data]
     if not triple_encode:
         categories = np.expand_dims(np.arange(1, 25), 0)
-        encoder = CategoricalEncoder(categories=categories)
-        encoded_calltime = encoder.parse(calltime)
+        # encoder = CategoricalEncoder(categories=categories)
+        # encoded_calltime = encoder.parse(calltime)
+        encoded_calltime, encoder, categories = preprocess_category_value_likelihood(calltime, encoder=encoder)
     else:
         categories = np.expand_dims(np.arange(len(TIME_INTERVAL)), 0)
         encoder = CategoricalEncoder(categories=categories)
         call_time_interval = _parse_time(calltime)
-        print(call_time_interval)
         encoded_calltime = encoder.parse(call_time_interval)
     return (encoded_calltime, encoder, categories)
 
 
-def preprocess_date_to_duration(data):
+def preprocess_date_to_duration(data, encoder=None):
     """
     Preprocess date to duration, like convert birthday into age
     """
@@ -375,7 +400,7 @@ def preprocess_date_to_duration(data):
         else:
             age.append(2018 - int(str(i)[:4]))
     age = pd.Series(age).replace("unknown", np.nan)
-    return preprocess_numerical_value(age, normalize=False)
+    return preprocess_numerical_value(age, encoder=encoder, normalize=False)
 
 
 def preprocess_gender(data):
@@ -383,8 +408,8 @@ def preprocess_gender(data):
     Preprocess gender with fule: 1 for man, 0 for female and 2 for unknown,
     and return in onehot encoded data
     """
-    (encoded_data, encoder, categories) = preprocess_categorical_value(data, keep_name_list=["0", "1"],
-                                                                       other_name_rep=2, rep_na=2)
+    (encoded_data, encoder, categories) = preprocess_categorical_value_onehot(data, keep_name_list=["0", "1"],
+                                                                              other_name_rep=2, rep_na=2)
     encoded_categories = ["female", "male", "unknown"]
     return (encoded_data, encoder, encoded_categories)
 
@@ -413,8 +438,33 @@ def preprocess_industry(data, main_industry_list=None):
     return (encoded_data, encoder, total_charger_list)
 
 
+def preprocess_education(data, encoder=None):
+    data = data.fillna("others")
+    def _is_university(x):
+        if re.search(r".*大学.*", x):
+            return "1"
+        else:
+            return "0"
+    parsed_data = pd.Series([_is_university(x) for x in data])
+    return preprocess_cate_to_binary_encode(parsed_data, encoder=encoder)
+
+
+def preprocess_shinchoritsu(data, encoder=None):
+    data = data.fillna(100)
+    data = data - 100
+    def _is_increase(x):
+        if x > 0:
+            return 1
+        elif x == 0:
+            return 0
+        else:
+            return -1
+    parsed_data = pd.Series([_is_increase(x) for x in data]).astype(str)
+    return preprocess_numerical_value(parsed_data, encoder=encoder, normalize=False, use_log=False)
+    # return preprocess_category_value_likelihood(parsed_data, encoder=encoder)
+"""
 PREPROCESSING_FACTORY = {"week":
-                             {"fn": preprocess_categorical_value,
+                             {"fn": preprocess_categorical_value_onehot,
                               "params": {"categories": [['土曜日', '日曜日', '月曜日', '木曜日',
                                                          '水曜日', '火曜日', '金曜日']]}},
                          "charger_id":
@@ -423,7 +473,7 @@ PREPROCESSING_FACTORY = {"week":
                              {"fn": preprocess_calltime,
                               "params": {"triple_encode": False}},
                          "list_type":
-                             {"fn": preprocess_categorical_value,
+                             {"fn": preprocess_categorical_value_onehot,
                               "params": {"categories": [['源泉', '管S']]}},
                          "re_call_date":
                              {"fn": preprocess_cate_to_binary_encode},
@@ -481,18 +531,109 @@ PREPROCESSING_FACTORY = {"week":
                          "danjokubun":
                              {"fn": preprocess_gender},
                          "eto_meisho":
-                             {"fn": preprocess_categorical_value},
+                             {"fn": preprocess_categorical_value_onehot},
                          "tosankeireki":
                              {"fn": preprocess_cate_to_binary_encode},
                          "race_area":
-                             {"fn": preprocess_categorical_value}}
+                             {"fn": preprocess_categorical_value_onehot}}
+"""
+
+
+PREPROCESSING_FACTORY = {"week":
+                             {"fn": preprocess_category_value_likelihood},
+                         "charger_id":
+                             {"fn": preprocess_category_value_likelihood},
+                         "call_time":
+                             {"fn": preprocess_calltime,
+                              "params": {"triple_encode": False}},
+                         "list_type":
+                             {"fn": preprocess_categorical_value_onehot},
+                         "re_call_date":
+                             {"fn": preprocess_cate_to_binary_encode},
+                         "address":
+                             {"fn": preprocess_address},
+                         "kabushiki_code":
+                             {"fn": preprocess_cate_to_binary_encode},
+                         "establishment":
+                             {"fn": preprocess_date_to_duration},
+                         "shihonkin":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False}},
+                         "employee_num":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False}},
+                         "kojokazu":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False, "rep_na": 0}},
+                         "jigyoshokazu":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False, "rep_na": 0}},
+                         "industry_code":
+                             {"cols": ["industry_code1"],
+                              "fn": preprocess_category_value_likelihood},
+                         "zenkikessan_uriagedaka":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False}},
+                         "zenkikessan_riekikin":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False, "rep_na": 0}},
+                         "tokikessan_uriagedaka":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False}},
+                         "tokikessan_riekikin":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False, "rep_na": 0}},
+                         "tokiuriage_shinchoritsu":
+                             {"fn": preprocess_shinchoritsu},
+                         "zenkiuriage_shinchoritsu":
+                             {"fn": preprocess_shinchoritsu},
+                         "zenkirieki_shinchohitai":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False}},
+                         "tokirieki_shinchoritsu":
+                             {"fn": preprocess_shinchoritsu},
+                         "tokirieki_shinchohitai":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False}},
+                         "zenkirieki_shinchoritsu":
+                             {"fn": preprocess_shinchoritsu},
+                         "zenkiuriage_shinchohitai":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False}},
+                         "tokiuriage_shinchohitai":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False}},
+                         "hitoriataririgekkan_uriagekinhitai":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False}},
+                         "hitoriataririgekkan_riekikingaku":
+                             {"fn": preprocess_numerical_value,
+                              "params": {"normalize": False, "use_log": False}},
+                         "birthday":
+                             {"fn": preprocess_date_to_duration},
+                         "danjokubun":
+                             {"fn": preprocess_category_value_likelihood},
+                         "eto_meisho":
+                             {"fn": preprocess_category_value_likelihood},
+                         "tosankeireki":
+                             {"fn": preprocess_cate_to_binary_encode},
+                         "race_area":
+                             {"fn": preprocess_category_value_likelihood},
+                         "position":
+                             {"fn": preprocess_category_value_likelihood},
+                         "jukyo":
+                             {"fn": preprocess_category_value_likelihood},
+                         "saishugakureki_gakko":
+                             {"fn": preprocess_education}}
 
 
 def test():
     filename = "train_call_history.csv"
     df = pd.read_csv(filename, encoding="utf8")
-    x = ALL_USED_COLUMNS[23]
+    x = ALL_USED_COLUMNS[3]
     data = df[x]
     fn = PREPROCESSING_FACTORY
     (encoded, encoder, categories) = fn[x]["fn"](data, **fn[x].get("params", {}))
     print(x, data[:5], encoded[:5], categories)
+
+# test()

@@ -3,3 +3,6 @@ data
 kernel.ipynb
 *.csv
 *.txt
+kernel.ipynb
+*.bin
+det2xml.py
