@@ -67,11 +67,11 @@ def xgb_train(x_train, y_train, x_test, y_test, model_name):
 
 
 def lgb_train(x_train, y_train, x_test, y_test, model_name):
-    params = {"num_leaves": 51,
-              'num_trees': 300,
+    params = {"num_leaves": 101,
+              'num_trees': 500,
               'objective': 'binary',
               'metric': 'auc',
-              'max_bin': 20,
+              'max_bin': 50,
               # 'bagging_fraction': 0.8,
               # 'bagging_freq': 5,
               # 'feature_fraction': 0.9,
@@ -136,7 +136,7 @@ def run(col_name_used, args):
 
 COL_NAMES = ["charger_id", "week", "call_time", "list_type", "re_call_date",  "address", "kojokazu", "jigyoshokazu",
              "tokikessan_uriagedaka",
-             "tosankeireki",  "jukyo", "race_area", "saishugakureki_gakko"]
+             "tosankeireki",  "jukyo", "race_area", ]
 
 
 if __name__ == "__main__":
