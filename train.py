@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import roc_auc_score
 from preprocess import PREPROCESSING_FACTORY as factory
+from sklearn.model_selection import StratifiedKFold
 import argparse
 
 
@@ -67,8 +68,8 @@ def xgb_train(x_train, y_train, x_test, y_test, model_name):
 
 
 def lgb_train(x_train, y_train, x_test, y_test, model_name):
-    params = {"num_leaves": 101,
-              'num_trees': 500,
+    params = {"num_leaves": 1001,
+              'num_trees': 2500,
               'objective': 'binary',
               'metric': 'auc',
               'max_bin': 50,
@@ -77,7 +78,7 @@ def lgb_train(x_train, y_train, x_test, y_test, model_name):
               # 'feature_fraction': 0.9,
               'learning_rate': 0.05,
               'num_iterations': 300,
-              'max_depth': 15,
+              'max_depth': 20,
               'min_child_weight': 20,
               'colsample_bytree': 0.4,
               'subsample': 0.6,
@@ -133,15 +134,96 @@ def run(col_name_used, args):
         lgb_train(x_train, y_train, x_test, y_test, model_name)
         lgb_eval(x_test, y_test, model_name)
 
+def total_run(col_name_used, args):
+    def _preprocess(df):
+        if not input_file.endswith("csv"):
+            raise ValueError("Input file must be a csv file!")
+        if not os.path.exists(input_file):
+            raise ValueError("Input file not found! Check input path!")
+
+        encoded_data = []
+        encoders_dict = {}
+        cate_dict = {}
+        for col_name in col_name_used:
+            if col_name != "industry_code":
+                (encoding, encoder, categories) = factory[col_name]["fn"](df[col_name], **factory[col_name].get("params", {}))
+            else:
+                (encoding, encoder, categories) = factory[col_name]["fn"](df[factory[col_name]["cols"]])
+            encoded_data.append(encoding)
+            encoders_dict[col_name] = encoder
+            cate_dict[col_name] = categories
+        encoded_data = np.concatenate(encoded_data, axis=1)
+        return encoded_data, encoders_dict
+
+    def _pred_preprocess(data, encoders):
+        col_names = col_name_used
+        encoded_data = []
+        for col_name in col_names:
+            if not col_name == "industry_code":
+                (encoding, encoder, categories) = factory[col_name]["fn"](data[col_name], encoder=encoders[col_name],
+                                                                          **factory[col_name].get("params", {}))
+            else:
+                (encoding, encoder, categories) = factory[col_name]["fn"](data[factory[col_name]["cols"]])
+            encoded_data.append(encoding)
+        encoded_data = np.concatenate(encoded_data, axis=1)
+        return encoded_data
+
+    input_file = args.input_file
+    df = pd.read_csv(input_file)
+    label = np.asarray(df["result"])
+    encoded_data, encoders = _preprocess(df)
+    df_test = pd.read_csv("test_call_history_new.csv")
+    ids = df_test["id"]
+    encoded_test = _pred_preprocess(df_test, encoders)
+    with open("encoder.bin", "wb") as f:
+        pickle.dump(encoders, f)
+    folds = StratifiedKFold(n_splits=8,
+                            shuffle=True,
+                            random_state=7)
+    pred_list = []
+    for fold, (train_, val_) in enumerate(folds.split(label, label)):
+        print(fold)
+        train_x, train_y = encoded_data[train_], label[train_]
+        val_x, val_y = encoded_data[val_], label[val_]
+        params = {"num_leaves": 1001,
+                  'num_trees': 2500,
+                  'objective': 'binary',
+                  'metric': 'auc',
+                  'max_bin': 50,
+                  # 'bagging_fraction': 0.8,
+                  # 'bagging_freq': 5,
+                  # 'feature_fraction': 0.9,
+                  'learning_rate': 0.05,
+                  'num_iterations': 300,
+                  'max_depth': 20,
+                  'min_child_weight': 20,
+                  'colsample_bytree': 0.4,
+                  'subsample': 0.6,
+                  'boosting_type': 'dart',
+                  'scale_pos_weight': 40,
+                  'boost_from_average': True}
+        lgb_train = lgb.Dataset(train_x, train_y)
+        lgb_eval = lgb.Dataset(val_x, val_y, reference=lgb_train)
+        gbm = lgb.train(params, lgb_train, valid_sets=lgb_eval)
+        gbm.save_model("classifier.model{}".format(fold))
+        result = gbm.predict(encoded_test, num_iteration=gbm.best_iteration)
+        pred_list.append(result)
+    pred = np.mean(pred_list, axis=0)
+    output_file = "test_pred.txt"
+    with open(output_file, "w") as f:
+        f.write("id,result\n")
+        for idx in range(len(ids)):
+            f.write("{},{}\n".format(ids[idx],pred[idx]))
+
 
 COL_NAMES = ["charger_id", "week", "call_time", "list_type", "re_call_date",  "address", "kojokazu", "jigyoshokazu",
              "tokikessan_uriagedaka",
-             "tosankeireki",  "jukyo", "race_area", ]
+              "tosankeireki", "jukyo", "race_area", ]
 
 
 if __name__ == "__main__":
-    from predict import train_main
-    from eval import eval
+    # from predict import train_main
+    # from eval import eval
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_file", default="train_call_history.csv", help="train input file name")
     parser.add_argument("--model_name", default="classifier.model", help="xgboost classifier save name")
@@ -159,5 +241,5 @@ if __name__ == "__main__":
     #         highest_score = score
     # print("best score: ", highest_score)
     # print("col order: ", perm[best_i])
-    run(COL_NAMES, args)
+    total_run(COL_NAMES, args)
 

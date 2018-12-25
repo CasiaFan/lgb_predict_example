@@ -556,6 +556,8 @@ PREPROCESSING_FACTORY = {"week":
                              {"fn": preprocess_cate_to_binary_encode},
                          "establishment":
                              {"fn": preprocess_date_to_duration},
+                         "sogyotoshitsuki":
+                             {"fn": preprocess_date_to_duration},
                          "shihonkin":
                              {"fn": preprocess_numerical_value,
                               "params": {"normalize": False, "use_log": False}},
@@ -624,7 +626,9 @@ PREPROCESSING_FACTORY = {"week":
                          "jukyo":
                              {"fn": preprocess_category_value_likelihood},
                          "saishugakureki_gakko":
-                             {"fn": preprocess_education}}
+                             {"fn": preprocess_education},
+                         "shusshinchi":
+                             {"fn": preprocess_category_value_likelihood}}
 
 
 def test():

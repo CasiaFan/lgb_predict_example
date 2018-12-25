@@ -60,7 +60,7 @@ def train_main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_file", default="test_call_history.csv", help="train input file name")
-    parser.add_argument("--model_name", default="classifier.model", help="classifier name")
+    parser.add_argument("--model_name", default="classifier.model7", help="classifier name")
     parser.add_argument("--model_type", default="lgb", help="Select classifier: lgb(lightgbm) or xgb(xgboost)", choices=["lgb", "xgb"])
     parser.add_argument("--output_file", default="test_pred.txt", help="prediction result save file")
     args = parser.parse_args()
